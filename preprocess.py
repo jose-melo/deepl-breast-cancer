@@ -15,8 +15,6 @@ import cv2
 import pydicom
 from tqdm import tqdm
 
-UINT16_MAX = 2**16 - 1
-
 
 STATUS_OK = 0
 STATUS_ERR = 1
@@ -97,8 +95,8 @@ def process_image(img: np.ndarray, args: Args) -> np.ndarray:
     img = cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
 
     # Convert the image to 16-bit grayscale
-    img *= UINT16_MAX
-    img = img.astype(np.uint16)
+    img *= 255
+    img = img.astype(np.uint8)
     return img
 
 
