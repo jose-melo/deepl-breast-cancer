@@ -23,7 +23,8 @@ defaut_config = {
     "num_classes": 10,
     "num_layers": 6,
     "lr": 1e-4,
-    "max_epochs": 50
+    "max_epochs": 50,
+    "num_attention_heads": 4,
 }
 
 class ViTMNIST(object):
