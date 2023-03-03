@@ -35,7 +35,7 @@ class AttentionLayer(nn.Module):
     def __init__(self, config):
         super(AttentionLayer, self).__init__()
         self.config = config
-        self.config["head_embed_dim"] = self.config["embedding_dim"] // self.config["num_attention_heads"]
+        self.config["head_embedding_dim"] = self.config["embedding_dim"] // self.config["num_attention_heads"]
 
         self.proj_queries = nn.Linear(self.config["embedding_dim"], self.config["embedding_dim"], bias=True)
         self.proj_keys = nn.Linear(self.config["embedding_dim"], self.config["embedding_dim"], bias=True)
@@ -46,17 +46,17 @@ class AttentionLayer(nn.Module):
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
         
         q = self.proj_queries(q)
-        q = q.reshape(q.shape[0], q.shape[1], self.config["num_attention_heads"], self.config["head_embed_dim"])
+        q = q.reshape(q.shape[0], q.shape[1], self.config["num_attention_heads"], self.config["head_embedding_dim"])
         q = q.transpose(1, 2)
         q = q.reshape([-1, q.shape[2], q.shape[3]])
 
         k = self.proj_keys(k)
-        k = k.reshape(k.shape[0], k.shape[1], self.config["num_attention_heads"], self.config["head_embed_dim"])
+        k = k.reshape(k.shape[0], k.shape[1], self.config["num_attention_heads"], self.config["head_embedding_dim"])
         k = k.transpose(1, 2)
         k = k.reshape([-1, k.shape[2], k.shape[3]])
 
         v = self.proj_values(v)
-        v = v.reshape(v.shape[0], v.shape[1], self.config["num_attention_heads"], self.config["head_embed_dim"])
+        v = v.reshape(v.shape[0], v.shape[1], self.config["num_attention_heads"], self.config["head_embedding_dim"])
         v = v.transpose(1, 2)
         v = v.reshape([-1, v.shape[2], v.shape[3]])
 
