@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import  pytorch_lightning as pl
 
 class EmbeddingLayer(nn.Module):
 
@@ -85,9 +86,10 @@ class Encoder(nn.Module):
 
         return x
 
-class ViT(nn.Module):
+class ViT(pl.LightningModule):
     def __init__(self, config):
         super(ViT, self).__init__()
+        self.save_hyperparameters()
         self.config = config
     
         self.embedding = EmbeddingLayer(config)
@@ -104,7 +106,6 @@ class ViT(nn.Module):
         self.fc2 = nn.Linear(self.config["embedding_dim"], self.config["num_classes"])
         
         self.activation = nn.ReLU()
-        self.output = nn.Softmax(dim=1)
 
     def forward(self, x):
         x = self.embedding(x)
@@ -114,6 +115,30 @@ class ViT(nn.Module):
         x = self.fc1(x)
         x = self.activation(x)
         x = self.fc2(x)
-        x = self.output(x)
         return x 
     
+            
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.parameters(), self.config["lr"], weight_decay=1e-3)            
+
+    def training_step(self, batch, batch_idx) -> None:
+        loss = self.calculate_loss(batch, 'train')
+        return loss
+    
+    def calculate_loss(self, batch, mode):
+        imgs, labels = batch
+
+        imgs, labels = imgs.to(self.config["device"]), labels.to(self.config["device"])
+
+        predict = self.forward(imgs)
+        loss_fn = nn.CrossEntropyLoss()
+        loss = loss_fn(predict, labels)
+
+        self.log("%s_loss" % mode, loss)
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        self.calculate_loss(batch, mode="val")
+    
+    def test_step(self, batch, batch_idx):
+        self.calculate_loss(batch, mode="test")
