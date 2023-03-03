@@ -56,12 +56,12 @@ class ViTMNIST(object):
 
         self.train_loader = train_dataloader
         self.test_loader = test_dataloader
-    
 
     def train(self):
         self.get_data()
-        vit_callback = ModelCheckpoint(monitor=r'hp_metric/val',mode='min')
+        vit_callback = ModelCheckpoint(monitor=r'val_loss',mode='min')
         self.trainer = pl.Trainer(
+            accelerator= "gpu" if torch.cuda.is_available() else "cpu",
             devices=1,
             max_epochs=self.config["max_epochs"],
             log_every_n_steps=1,

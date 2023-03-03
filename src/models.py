@@ -1,3 +1,4 @@
+from sklearn.metrics import accuracy_score
 import torch
 from torch import nn
 import  pytorch_lightning as pl
@@ -134,7 +135,9 @@ class ViT(pl.LightningModule):
         loss_fn = nn.CrossEntropyLoss()
         loss = loss_fn(predict, labels)
 
+        acc = accuracy_score(predict.argmax(dim=1), labels) * 100
         self.log("%s_loss" % mode, loss)
+        self.log("%s_accuracy"%mode, acc)
         return loss
     
     def validation_step(self, batch, batch_idx):
