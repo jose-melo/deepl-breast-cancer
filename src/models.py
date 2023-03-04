@@ -198,7 +198,7 @@ class ViTMNIST(object):
 
     def __init__(self, config: dict):
         self.config = config
-        self.model = ViT(config)
+        self.model = ViT(config).to(self.config["device"])
         
     def train(self):
 
