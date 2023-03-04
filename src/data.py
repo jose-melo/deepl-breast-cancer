@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader, Dataset, Subset, random_split
 from torchvision.datasets import MNIST
 import torchvision
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
 VAL_SIZE = 0.2
 TEST_SIZE = 0.2
@@ -20,13 +21,18 @@ class BreastCancerDataset(Dataset):
         self,
         root: str = "data/train_images_post",
         label_file: str = "data/train.csv",
-        transform: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+        preload: bool = False,
     ):
         self.root = root
-        self.transform = transform
         self.labels = pd.read_csv(
             label_file, index_col=False, usecols=["image_id", "cancer"]
         )
+        if preload:
+            self._preloaded = []
+            for idx in tqdm(range(len(self.labels)), desc="Preloading data"):
+                self._preloaded.append(self._load_idx_to(idx, convert_to_float=False))
+        else:
+            self._preloaded = None
 
     def split(self) -> Tuple[Subset, Subset, Subset]:
         trainval, test = train_test_split(
@@ -52,14 +58,30 @@ class BreastCancerDataset(Dataset):
     def __len__(self):
         return len(self.labels)
 
-    def __getitem__(self, idx):
-        image_id, cancer = self.labels.iloc[idx]
+    def _load_idx_to(
+        self,
+        idx: int,
+        convert_to_float: bool = False,
+    ):
+        image_id = self.labels.iloc[idx, 0]
         image_file = os.path.join(self.root, "0", f"{image_id}.png")
         img = torchvision.io.read_image(image_file)
-        padded_img = torch.zeros((1, 512, 512), dtype=torch.float32)
-        padded_img[[0], : img.shape[1], : img.shape[2]] = img.to(torch.float32) / 255
-        if self.transform:
-            img = self.transform(img)
+        if convert_to_float:
+            padded_img = torch.zeros((1, 512, 512), dtype=torch.float32)
+            img = img.to(torch.float32) / 255
+        else:
+            padded_img = torch.zeros((1, 512, 512), dtype=torch.uint8)
+        padded_img[[0], : img.shape[1], : img.shape[2]] = img
+        return padded_img
+
+    def __getitem__(self, idx: int):
+        if self._preloaded is not None:
+            padded_img = self._preloaded[idx]
+            padded_img = padded_img.to(torch.float32) / 255
+        else:
+            padded_img = self._load_idx_to(idx, convert_to_float=True)
+
+        cancer = self.labels.iloc[idx, 1]
         return padded_img, cancer
 
 
@@ -70,16 +92,20 @@ class BreastCancerDataModule(pl.LightningDataModule):
         label_file: str = "data/train.csv",
         batch_size: int = 64,
         num_workers: int = 1,
+        preload: bool = False,
     ):
         super().__init__()
         self.root = root
         self.label_file = label_file
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.preload = preload
 
     def setup(self, stage=None):
         self.train, self.val, self.test = BreastCancerDataset(
-            self.root, self.label_file
+            self.root,
+            self.label_file,
+            preload=self.preload,
         ).split()
 
     def _dataloader(self, ds: Subset):
