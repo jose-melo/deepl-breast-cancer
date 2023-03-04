@@ -5,6 +5,7 @@ import  pytorch_lightning as pl
 from typing import Tuple
 from torchvision import datasets
 from torchvision import transforms
+from torchvision.ops import sigmoid_focal_loss
 
 from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
@@ -140,6 +141,7 @@ class ViT(pl.LightningModule):
         x = self.fc1(x)
         x = self.activation(x)
         x = self.fc2(x)
+
         return x 
     
             
@@ -156,12 +158,33 @@ class ViT(pl.LightningModule):
         imgs, labels = imgs.to(self.config["device"]), labels.to(self.config["device"])
 
         predict = self.forward(imgs)
-        loss_fn = nn.CrossEntropyLoss()
-        loss = loss_fn(predict, labels)
+        predict = predict.reshape(predict.shape[0])
+        #loss_fn = nn.CrossEntropyLoss()
+        loss_fn = sigmoid_focal_loss
+        loss = loss_fn(predict, labels.float(), reduction='mean')
 
-        acc = accuracy_score(predict.argmax(dim=1).to("cpu"), labels.to('cpu')) * 100
+        prediction = torch.sigmoid(predict) > 0.5
+        m = {}
+        m["tp"] = ((prediction == 1) & (labels == 1)).float().sum()
+        m["fp"] = ((prediction == 1) & (labels == 0)).float().sum()
+        m["tn"] = ((prediction == 0) & (labels == 0)).float().sum()
+        m["fn"] = ((prediction == 0) & (labels == 1)).float().sum()
+
+        m["precision"] = m["tp"] / (m["tp"] + m["fp"])
+        m["recall"] = m["tp"] / (m["tp"] + m["fn"])
+        m["f1"] = 2 * m["precision"] * m["recall"] / (m["precision"] + m["recall"])
+
         self.log("%s_loss" % mode, loss)
-        self.log("%s_accuracy"%mode, acc)
+        for metric, value in m.items():
+            self.log_dict(
+                {
+                    "ext/" + metric + "_" + mode: float(value),
+                    r"step": float(self.current_epoch),
+                },
+                on_step=False,
+                on_epoch=True,
+            )
+
         return loss
     
     def validation_step(self, batch, batch_idx):

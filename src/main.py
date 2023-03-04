@@ -1,6 +1,7 @@
 import torch
 from models import ViTMNIST
 import pprint
+from torchinfo import summary
 
 default_config = {
     "img_size": 512,
@@ -12,7 +13,7 @@ default_config = {
     "embedding_dim": 64, 
     "patch": 128,
     "dim_feed_forward": 128,
-    "num_classes": 10,
+    "num_classes": 1,
     "num_layers": 6,
     "lr": 1e-4,
     "max_epochs": 50,
@@ -23,8 +24,10 @@ if __name__ == '__main__':
 
     print('Starting training: ')
     pprint.pprint(default_config)
+
     
     vit = ViTMNIST(default_config)
+    summary(vit.model, (default_config["img_size"], default_config["n_channels"], default_config["img_size"], default_config["img_size"]))
     vit.train()
 
 
