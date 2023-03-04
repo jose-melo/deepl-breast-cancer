@@ -3,14 +3,14 @@ from models import ViTMNIST
 import pprint
 
 default_config = {
-    "img_size": 256,
+    "img_size": 512,
     "data_path": "data",
     "batch_size": 16,
     "num_workers": 4,
     "device": "cuda" if torch.cuda.is_available() else "cpu", 
     "n_channels": 1,
     "embedding_dim": 64, 
-    "patch": 32,
+    "patch": 128,
     "dim_feed_forward": 128,
     "num_classes": 10,
     "num_layers": 6,

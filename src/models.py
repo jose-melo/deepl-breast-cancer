@@ -9,7 +9,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
-from data import MNISTDataModule
+from data import BreastCancerDataModule
 from datetime import datetime
 
 class EmbeddingLayer(nn.Module):
@@ -177,11 +177,9 @@ class ViTMNIST(object):
         self.model = ViT(config)
         
     def train(self):
-        img_size = (self.config["img_size"], self.config["img_size"])
-        mnist = MNISTDataModule(
-            batch_size=64, num_workers=4, val_frac=0.2, img_size=img_size,
-        )
-        
+
+        mnist = BreastCancerDataModule(batch_size=self.config["batch_size"], num_workers=self.config["num_workers"])        
+
         vit_callback = ModelCheckpoint(monitor=r'val_loss',mode='min')
         self.trainer = pl.Trainer(
             accelerator= "gpu" if torch.cuda.is_available() else "cpu",
