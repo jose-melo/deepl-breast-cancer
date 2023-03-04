@@ -59,10 +59,18 @@ class Encoder(nn.Module):
 
         
         self.linear1 = nn.Linear(self.size_fc, 128)
-        self.fc = nn.Linear(128, latent_dim)
+
+        self.fc_mu = nn.Linear(128, latent_dim)
+        self.fc_sigma = nn.Linear(128, latent_dim)
 
         self.dropout = nn.Dropout(p=0.05, inplace=True)
         self.relu = nn.ReLU()
+
+
+        self.N = torch.distributions.Normal(0, 1)
+        self.N.loc = self.N.loc.cuda()
+        self.N.scale = self.N.scale.cuda()
+        self.kl = 0
 
     def forward(self, x : torch.Tensor):
         x = self.conv1(x)
@@ -83,9 +91,13 @@ class Encoder(nn.Module):
         x = x.view(-1, self.size_fc)
 
         x = self.linear1(x)
-        x = self.fc(x)
 
-        return x
+        mu = self.fc_mu(x)
+        sigma = torch.exp(self.fc_sigma(x))
+
+        z = mu + sigma*self.N.sample(mu.shape)
+        self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
+        return z
 
 class Decoder(nn.Module):
     def __init__(self, latent_dim, kernel_size, deconv1_size):
@@ -166,7 +178,7 @@ def train(model : nn.Module, optimizer : torch.optim.Optimizer, criterion : torc
 
                 with torch.set_grad_enabled(mode == 'train'):
                     outputs = model(inputs)
-                    loss = criterion(inputs, outputs)
+                    loss = ((outputs - inputs)**2).sum() + model.encoder.kl
 
                     if mode == 'train':
                         loss.backward()
@@ -185,6 +197,7 @@ def train(model : nn.Module, optimizer : torch.optim.Optimizer, criterion : torc
             outputs = model(inputs)
             plot_img(inputs.cpu(), outputs.cpu())
 
+    return
             
 
         
@@ -197,16 +210,18 @@ def main():
     dataset_train, dataset_test  = random_split(minist_dataset, [int(0.7*len(minist_dataset)), len(minist_dataset) - int(0.7*len(minist_dataset))])
     
     dataloaders = {}
-    dataloaders['train'] = DataLoader(dataset_train, batch_size=64, num_workers=4)
-    dataloaders['val'] = DataLoader(dataset_test, batch_size=64, num_workers=4)
+    dataloaders['train'] = DataLoader(dataset_train, batch_size=16, num_workers=4)
+    dataloaders['val'] = DataLoader(dataset_test, batch_size=16, num_workers=4)
 
-    model = AE(img_size=28, latent_dim=28)
+    model = AE(img_size=28, latent_dim=2)
 
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    loss = torch.nn.MSELoss()
 
-    train(model, optimizer, loss, dataloaders, 100)        
+    train(model, optimizer, None, dataloaders, 2)        
+
+    train(model, optimizer, loss, dataloaders, 2)        
+
     
 
 
