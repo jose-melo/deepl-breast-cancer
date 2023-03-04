@@ -10,16 +10,26 @@ import pandas as pd
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-size_fc = 5 * 5* 5
 class Encoder(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, img_size, in_channels, kernel_size=3) -> None:
         super(Encoder, self).__init__()
-        self.conv1 = nn.Conv2d(1, 10, 3)
-        self.conv2 = nn.Conv2d(10, 5, 3)
+        conv1_out = 10
+        conv2_out = 10
+        maxpool_size = 2
+        maxpool_stride = 2
 
-        self.fc = nn.Linear(size_fc, 10)
+        self.conv1 = nn.Conv2d(in_channels, conv1_out, kernel_size)
+        self.conv2 = nn.Conv2d(conv1_out, conv2_out, kernel_size)
 
-        self.maxpool = nn.MaxPool2d(2, 2)
+        img_size = img_size - (kernel_size) + 1 # conv1
+        img_size = img_size // 2 # maxpool1
+        img_size = img_size - (kernel_size) + 1 # conv2
+        img_size = img_size // 2 # maxpool2
+        self.size_fc = img_size*img_size*conv2_out
+
+        self.fc = nn.Linear(self.size_fc, 10)
+
+        self.maxpool = nn.MaxPool2d(maxpool_size, maxpool_stride)
         self.relu = nn.ReLU()
 
     def forward(self, x : torch.Tensor):
@@ -27,15 +37,13 @@ class Encoder(nn.Module):
         x = self.relu(x)
 
         x = self.maxpool(x)
-        x = self.relu(x)
 
         x = self.conv2(x)
         x = self.relu(x)
 
         x = self.maxpool(x)
-        x = self.relu(x)
 
-        x = x.view(-1, size_fc)
+        x = x.view(-1, self.size_fc)
 
         x = self.fc(x)
 
@@ -87,7 +95,7 @@ def main():
     dataloaders['train'] = DataLoader(dataset_train, batch_size=64)
     dataloaders['val'] = DataLoader(dataset_test, batch_size=64)
 
-    model = Encoder()
+    model = Encoder(img_size=28, in_channels=1)
     model = model.to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=0.005)
     loss = torch.nn.CrossEntropyLoss()
