@@ -183,6 +183,7 @@ class ViT(pl.LightningModule):
                 },
                 on_step=False,
                 on_epoch=True,
+                reduce_fx=torch.sum
             )
 
         return loss
