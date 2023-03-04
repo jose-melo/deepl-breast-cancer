@@ -202,7 +202,7 @@ class ViTMNIST(object):
         
     def train(self):
 
-        mnist = BreastCancerDataModule(batch_size=self.config["batch_size"], num_workers=self.config["num_workers"])        
+        mnist = BreastCancerDataModule(batch_size=self.config["batch_size"], num_workers=self.config["num_workers"], preload=True)        
 
         vit_callback = ModelCheckpoint(monitor=r'val_loss',mode='min')
         self.trainer = pl.Trainer(
