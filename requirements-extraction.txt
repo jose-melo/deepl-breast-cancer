@@ -1,0 +1,3 @@
+pylibjpeg-openjpeg
+pylibjpeg-libjpeg
+pylibjpeg
