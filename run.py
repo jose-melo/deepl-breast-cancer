@@ -2,6 +2,8 @@ import os
 from datetime import datetime
 
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
+from pytorch_lightning.callbacks import ModelCheckpoint
+from torchinfo import summary
 
 from src import data, models
 
@@ -12,16 +14,27 @@ def set_env():
     # The slurm job id is used to set the run name on tensorboard.
     os.environ["SLURM_JOB_ID"] = datetime.now().strftime("%Y%m%d%H%M%S")
 
+
 def main():
     set_env()
 
-    img_size = (256, 256)
-    mnist = data.MNISTDataModule(
-        batch_size=64, num_workers=4, val_frac=0.2, img_size=img_size,
-    )
-    model = models.GAN(img_size, num_classes=10, latent_size=256, lr=3e-4)
+    img_size = (512, 512)
+    latent_size = 256
 
-    trainer = pl.Trainer(gpus=1, max_epochs=20, callbacks=[TQDMProgressBar()])
+    mnist = data.BreastCancerDataModule(batch_size=64, num_workers=4)
+    model = models.GAN(num_classes=2, latent_size=latent_size, lr=3e-4)
+
+    summary(model.generator, input_size=(1, latent_size,))
+    summary(model.discriminator, input_size=(1, 1, *img_size))
+
+    checkpoint_callback = ModelCheckpoint(
+        save_top_k=2, monitor="accuracy/real/val", save_last=True
+    )
+    trainer = pl.Trainer(
+        gpus=1,
+        max_epochs=20,
+        callbacks=[checkpoint_callback, TQDMProgressBar()],
+    )
     trainer.fit(model, mnist)
 
 

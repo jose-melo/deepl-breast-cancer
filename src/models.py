@@ -1,41 +1,43 @@
-from typing import Optional, Tuple
+from typing import Tuple
 import torch
-from torch import nn, optim
-from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import DataLoader
+from torch import nn
 import torch.utils.data
 import torchvision
-from torchvision.datasets import MNIST
-from torchvision import transforms
-
-from src import data, models
 
 import pytorch_lightning as pl
 
-import matplotlib.pyplot as plt
-from tqdm import tqdm, trange
+
+# out = (in-1)*stride - 2*padding + (kernel_size-1) + 1
+# output_size = input_size * 2
+CONV_KWARGS_X2 = dict(
+    kernel_size=4,
+    stride=2,
+    padding=1,
+)
+
+# output_size = input_size * 4
+CONV_KWARGS_X4 = dict(
+    kernel_size=6,
+    stride=4,
+    padding=1,
+)
 
 
-def generator_block(in_channels, out_channels, add_norm_and_activation=True, **kwargs):
-    # output_size = input_size * 4
-    # out = (in-1)*stride - 2*padding + (kernel_size-1) + 1
+def generator_block(
+    in_channels,
+    out_channels,
+    add_norm_and_activation=True,
+    conv_kwargs=CONV_KWARGS_X2,
+):
     layers = [
-        # nn.ConvTranspose2d(
-        #     in_channels,
-        #     out_channels,
-        #     kernel_size=6,
-        #     stride=4,
-        #     padding=1,
-        #     bias=False,
-        # ),
-        nn.utils.spectral_norm(nn.ConvTranspose2d(
-            in_channels,
-            out_channels,
-            kernel_size=4,
-            stride=2,
-            padding=1,
-            bias=False,
-        )),
+        nn.utils.spectral_norm(
+            nn.ConvTranspose2d(
+                in_channels,
+                out_channels,
+                bias=False,
+                **conv_kwargs,
+            )
+        ),
     ]
     if add_norm_and_activation:
         layers += [
@@ -45,7 +47,7 @@ def generator_block(in_channels, out_channels, add_norm_and_activation=True, **k
     return layers
 
 
-def discriminator_block(in_channels, out_channels, **kwargs):
+def discriminator_block(in_channels, out_channels, conv_kwargs=CONV_KWARGS_X2):
     # output_size = input_size * 4
     # out = (in-1)*stride - 2*padding + (kernel_size-1) + 1
     layers = [
@@ -53,10 +55,8 @@ def discriminator_block(in_channels, out_channels, **kwargs):
             nn.Conv2d(
                 in_channels,
                 out_channels,
-                kernel_size=4,
-                stride=2,
-                padding=1,
                 bias=False,
+                **conv_kwargs,
             ),
         ),
         nn.BatchNorm2d(out_channels),
@@ -73,17 +73,15 @@ class Generator(nn.Module):
 
         self.latent_size = latent_size
         self.main = nn.Sequential(
-            nn.Linear(latent_size, 128 * 4 * 4),
+            nn.Linear(latent_size, 64 * 4 * 4),
             nn.ReLU(inplace=True),
-            nn.Unflatten(-1, (128, 4, 4)),  # shape == 1024 x 4 x 4
-            *generator_block(128, 64),
+            nn.Unflatten(-1, (64, 4, 4)),
             *generator_block(64, 32),
-            *generator_block(32, 16),
-            *generator_block(16, 8),
-            *generator_block(8, 4),
+            *generator_block(32, 16, conv_kwargs=CONV_KWARGS_X4),
+            *generator_block(16, 8, conv_kwargs=CONV_KWARGS_X4),
             *generator_block(
-                4, 1, add_norm_and_activation=False
-            ),  # shape == 1 x 4096 x 4096
+                8, 1, conv_kwargs=CONV_KWARGS_X4, add_norm_and_activation=False
+            ),
             nn.Sigmoid(),
         )
 
@@ -100,14 +98,12 @@ class Discriminator(nn.Module):
         self.num_classes = num_classes
 
         self.main = nn.Sequential(
-            *discriminator_block(1, 4),
-            *discriminator_block(4, 8),
-            *discriminator_block(8, 16),
-            *discriminator_block(16, 32),
+            *discriminator_block(1, 8, conv_kwargs=CONV_KWARGS_X4),
+            *discriminator_block(8, 16, conv_kwargs=CONV_KWARGS_X4),
+            *discriminator_block(16, 32, conv_kwargs=CONV_KWARGS_X4),
             *discriminator_block(32, 64),
-            *discriminator_block(64, 128),
             nn.Flatten(),
-            nn.Linear(128 * 4 * 4, num_classes),
+            nn.Linear(64 * 4 * 4, num_classes),
         )
 
     def forward(self, x):
@@ -117,7 +113,6 @@ class Discriminator(nn.Module):
 class GAN(pl.LightningModule):
     def __init__(
         self,
-        img_size: Tuple[int, int],
         num_classes: int,
         latent_size: int = 256,
         lr: float = 3e-4,
@@ -187,12 +182,14 @@ class GAN(pl.LightningModule):
         batch_idx: int,
         optimizer_idx: int,
     ):
-        if batch_idx % 50 == 0:
+        if batch_idx % 100 == 0:
             with torch.no_grad():
                 imgs = self(self.fixed_noise.to(self.device))
             grid_size = int(len(self.fixed_noise) ** 0.5)
             grid = torchvision.utils.make_grid(imgs, nrow=grid_size, pad_value=1)
-            self.logger.experiment.add_image("fake_images_batch", grid, self.current_epoch*1000 + batch_idx)
+            self.logger.experiment.add_image(
+                "fake_images_batch", grid, self.current_epoch * 1000 + batch_idx
+            )
 
         if optimizer_idx == 0:
             # Optimize the generator
