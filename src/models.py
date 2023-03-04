@@ -2,6 +2,15 @@ from sklearn.metrics import accuracy_score
 import torch
 from torch import nn
 import  pytorch_lightning as pl
+from typing import Tuple
+from torchvision import datasets
+from torchvision import transforms
+
+from torch.utils.data import DataLoader
+from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
+
+from data import MNISTDataModule
+from datetime import datetime
 
 class EmbeddingLayer(nn.Module):
 
@@ -160,3 +169,28 @@ class ViT(pl.LightningModule):
     
     def test_step(self, batch, batch_idx):
         self.calculate_loss(batch, mode="test")
+    
+class ViTMNIST(object):
+
+    def __init__(self, config: dict):
+        self.config = config
+        self.model = ViT(config)
+        
+    def train(self):
+        img_size = (self.config["img_size"], self.config["img_size"])
+        mnist = MNISTDataModule(
+            batch_size=64, num_workers=4, val_frac=0.2, img_size=img_size,
+        )
+        
+        vit_callback = ModelCheckpoint(monitor=r'val_loss',mode='min')
+        self.trainer = pl.Trainer(
+            accelerator= "gpu" if torch.cuda.is_available() else "cpu",
+            devices=1,
+            max_epochs=self.config["max_epochs"],
+            log_every_n_steps=1,
+            callbacks=[vit_callback]
+        )
+
+        self.trainer.fit(self.model, mnist)
+
+        self.trainer.save_checkpoint(f'ckpt_save_{datetime.now().strftime("%Y%m%d%H%M%S")}.ckpt')        
