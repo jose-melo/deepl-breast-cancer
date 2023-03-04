@@ -30,7 +30,7 @@ class BreastCancerDataset(Dataset):
         if preload:
             self._preloaded = []
             for idx in tqdm(range(len(self.labels)), desc="Preloading data"):
-                self._preloaded.append(self._load_idx_to(idx, convert_to_float=False))
+                self._preloaded.append(self._load_idx(idx, convert_to_float=False))
         else:
             self._preloaded = None
 
@@ -58,7 +58,7 @@ class BreastCancerDataset(Dataset):
     def __len__(self):
         return len(self.labels)
 
-    def _load_idx_to(
+    def _load_idx(
         self,
         idx: int,
         convert_to_float: bool = False,
@@ -79,7 +79,37 @@ class BreastCancerDataset(Dataset):
             padded_img = self._preloaded[idx]
             padded_img = padded_img.to(torch.float32) / 255
         else:
-            padded_img = self._load_idx_to(idx, convert_to_float=True)
+            padded_img = self._load_idx(idx, convert_to_float=True)
+
+        cancer = self.labels.iloc[idx, 1]
+        return padded_img, cancer
+
+
+class BreastCancerDataset128(BreastCancerDataset):
+    def __init__(
+        self,
+        root: str = "data/train_images_post",
+        label_file: str = "data/train.csv",
+        preload: bool = False,
+    ):
+        super().__init__(root, label_file, preload=False)
+        if preload:
+            self._preloaded = []
+            for idx in tqdm(range(len(self.labels)), desc="Preloading data"):
+                self._preloaded.append(self._load_idx(idx).to("cuda"))
+
+    def _load_idx(
+        self,
+        idx: int,
+    ):
+        img = super()._load_idx(idx, convert_to_float=True)
+        return transforms.functional.resize(img, (128, 128))
+
+    def __getitem__(self, idx: int):
+        if self._preloaded is not None:
+            padded_img = self._preloaded[idx]
+        else:
+            padded_img = self._load_idx(idx)
 
         cancer = self.labels.iloc[idx, 1]
         return padded_img, cancer
@@ -92,6 +122,7 @@ class BreastCancerDataModule(pl.LightningDataModule):
         label_file: str = "data/train.csv",
         batch_size: int = 64,
         num_workers: int = 1,
+        resize_to_128: bool = True,
         preload: bool = False,
     ):
         super().__init__()
@@ -99,10 +130,16 @@ class BreastCancerDataModule(pl.LightningDataModule):
         self.label_file = label_file
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.resize_to_128 = resize_to_128
         self.preload = preload
 
     def setup(self, stage=None):
-        self.train, self.val, self.test = BreastCancerDataset(
+        if self.resize_to_128:
+            dataset_cls = BreastCancerDataset128
+        else:
+            dataset_cls = BreastCancerDataset
+
+        self.train, self.val, self.test = dataset_cls(
             self.root,
             self.label_file,
             preload=self.preload,
