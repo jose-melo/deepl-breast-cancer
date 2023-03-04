@@ -18,11 +18,11 @@ def set_env():
 def main():
     set_env()
 
-    img_size = (512, 512)
+    img_size = (128, 128)
     latent_size = 256
 
-    mnist = data.BreastCancerDataModule(batch_size=64, num_workers=4)
-    model = models.GAN(num_classes=2, latent_size=latent_size, lr=3e-4)
+    mnist = data.BreastCancerDataModule(batch_size=64, num_workers=0, preload=True)
+    model = models.GAN(num_classes=2, latent_size=latent_size, lr=1e-4)
 
     summary(model.generator, input_size=(1, latent_size,))
     summary(model.discriminator, input_size=(1, 1, *img_size))
@@ -31,8 +31,9 @@ def main():
         save_top_k=2, monitor="accuracy/real/val", save_last=True
     )
     trainer = pl.Trainer(
-        gpus=1,
-        max_epochs=20,
+        accelerator='gpu',
+        devices=1,
+        max_epochs=100,
         callbacks=[checkpoint_callback, TQDMProgressBar()],
     )
     trainer.fit(model, mnist)
