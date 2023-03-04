@@ -73,15 +73,14 @@ class Generator(nn.Module):
 
         self.latent_size = latent_size
         self.main = nn.Sequential(
-            nn.Linear(latent_size, 64 * 4 * 4),
+            nn.Linear(latent_size, 128 * 4 * 4),
             nn.ReLU(inplace=True),
-            nn.Unflatten(-1, (64, 4, 4)),
+            nn.Unflatten(-1, (128, 4, 4)),
+            *generator_block(128, 64),
             *generator_block(64, 32),
-            *generator_block(32, 16, conv_kwargs=CONV_KWARGS_X4),
-            *generator_block(16, 8, conv_kwargs=CONV_KWARGS_X4),
-            *generator_block(
-                8, 1, conv_kwargs=CONV_KWARGS_X4, add_norm_and_activation=False
-            ),
+            *generator_block(32, 16),
+            *generator_block(16, 8),
+            *generator_block(8, 1, add_norm_and_activation=False),
             nn.Sigmoid(),
         )
 
@@ -98,12 +97,13 @@ class Discriminator(nn.Module):
         self.num_classes = num_classes
 
         self.main = nn.Sequential(
-            *discriminator_block(1, 8, conv_kwargs=CONV_KWARGS_X4),
-            *discriminator_block(8, 16, conv_kwargs=CONV_KWARGS_X4),
-            *discriminator_block(16, 32, conv_kwargs=CONV_KWARGS_X4),
+            *discriminator_block(1, 8),
+            *discriminator_block(8, 16),
+            *discriminator_block(16, 32),
             *discriminator_block(32, 64),
+            *discriminator_block(64, 128),
             nn.Flatten(),
-            nn.Linear(64 * 4 * 4, num_classes),
+            nn.Linear(128 * 4 * 4, num_classes),
         )
 
     def forward(self, x):
@@ -121,7 +121,7 @@ class GAN(pl.LightningModule):
         self.save_hyperparameters()
         self.generator = Generator(latent_size)
         self.discriminator = Discriminator(latent_size, num_classes + 1)
-        self.fixed_noise = torch.randn(36, latent_size)
+        self.fixed_noise = torch.randn(9, latent_size)
         self.criterion = nn.CrossEntropyLoss()
 
     @property
@@ -182,15 +182,6 @@ class GAN(pl.LightningModule):
         batch_idx: int,
         optimizer_idx: int,
     ):
-        if batch_idx % 100 == 0:
-            with torch.no_grad():
-                imgs = self(self.fixed_noise.to(self.device))
-            grid_size = int(len(self.fixed_noise) ** 0.5)
-            grid = torchvision.utils.make_grid(imgs, nrow=grid_size, pad_value=1)
-            self.logger.experiment.add_image(
-                "fake_images_batch", grid, self.current_epoch * 1000 + batch_idx
-            )
-
         if optimizer_idx == 0:
             # Optimize the generator
             self.generator.zero_grad()
@@ -227,5 +218,5 @@ class GAN(pl.LightningModule):
         with torch.no_grad():
             imgs = self(self.fixed_noise.to(self.device))
         grid_size = int(len(self.fixed_noise) ** 0.5)
-        grid = torchvision.utils.make_grid(imgs, nrow=grid_size, pad_value=1)
+        grid = torchvision.utils.make_grid(imgs, nrow=grid_size, pad_value=2)
         self.logger.experiment.add_image("fake_images", grid, self.current_epoch)
