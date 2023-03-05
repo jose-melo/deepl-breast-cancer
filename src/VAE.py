@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from data import MNISTDataModule
-from data import BreastCancerDataset128
+from data import BreastCancerDataModule
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -27,7 +27,7 @@ class VAE(pl.LightningModule):
         super(VAE, self).__init__()
         self.config = config
         dense_layer_size = conv_shape(img_size, kernel=3, stride=1)
-        dense_layer_size = conv_shape(dense_layer_size, kernel=3, stride=1)
+        dense_layer_size = conv_shape(dense_layer_size, kernel=3, stride=2)
         dense_layer_size = conv_shape(dense_layer_size, kernel=3, stride=2)
         dense_layer_size = conv_shape(dense_layer_size, kernel=3, stride=2)
 
@@ -83,13 +83,13 @@ class VAE(pl.LightningModule):
 class Encoder(nn.Module):
     def __init__(self, in_channels, kernel_size, latent_dim, size, config) -> None:
         super(Encoder, self).__init__()
-        c1 = 8
-        c2 = 16
-        c3 = 32
+        c1 = 4
+        c2 = 8
+        c3 = 16
         c4 = 32
 
         self.conv1 = nn.Conv2d(in_channels, c1, kernel_size, stride=1)
-        self.conv2 = nn.Conv2d(c1, c2, kernel_size, stride=1)
+        self.conv2 = nn.Conv2d(c1, c2, kernel_size, stride=2)
         self.conv3 = nn.Conv2d(c2, c3, kernel_size, stride=2)
         self.conv4 = nn.Conv2d(c3, c4, kernel_size, stride=2)
 
@@ -100,19 +100,23 @@ class Encoder(nn.Module):
         self.size_fc = c4*size*size
 
         
-        self.linear1 = nn.Linear(self.size_fc + 1, 128)
+        self.linear1 = nn.Linear(self.size_fc + 1, 512)
 
-        self.fc_mu = nn.Linear(128, latent_dim)
-        self.fc_sigma = nn.Linear(128, latent_dim)
+        self.fc_mu = nn.Linear(512, latent_dim)
+        self.fc_sigma = nn.Linear(512, latent_dim)
 
         self.dropout = nn.Dropout(p=0.05, inplace=True)
-        self.relu = nn.ReLU()
+        self.relu = nn.ReLU(True)
+        self.sigmoid = nn.Sigmoid()
 
 
         self.N = torch.distributions.Normal(0, 1)
         self.N.loc = self.N.loc.cuda()
         self.N.scale = self.N.scale.cuda()
         self.kl = 0
+
+        # self.linear_one = nn.Linear(784 + 1, 512)
+        # self.linear_two = nn.Linear(512, latent_dim)
 
     def forward(self, x : torch.Tensor, labels : torch.Tensor):
         x = self.conv1(x)
@@ -129,7 +133,6 @@ class Encoder(nn.Module):
         x = self.conv4(x)
         x = self.relu(x)
 
-        
         x = x.view(-1, self.size_fc)
 
         #concat label
@@ -142,27 +145,42 @@ class Encoder(nn.Module):
 
         z = mu + sigma*self.N.sample(mu.shape)
         self.kl = (sigma**2 + mu**2 - torch.log(sigma**2) - 1).sum()
+
+
+        # #concat label
+        # x = x.reshape(-1, 784)
+        # labels = labels.unsqueeze(-1)
+        # x = torch.cat((x, labels), 1)
+        
+        # x = self.linear_one(x)
+        # x = self.relu(x)
+        # x = self.linear_two(x)
+        # x = self.relu(x)
         return z
 
 class Decoder(nn.Module):
     def __init__(self, latent_dim, kernel_size, deconv1_size, config):
         super(Decoder, self).__init__()
-        self.c1 = 8
-        self.c2 = 16
-        self.c3 = 32
+        self.c1 = 4
+        self.c2 = 8
+        self.c3 = 16
         self.c4 = 32
 
         self.deconv1_size = deconv1_size
-        self.first_layer = nn.Linear(latent_dim + 1, 128)
-        self.linear2 = nn.Linear(128, self.c4*deconv1_size*deconv1_size)
-        self.deconv1 = nn.ConvTranspose2d(self.c4, self.c3, kernel_size, stride=2)  
+        self.first_layer = nn.Linear(latent_dim + 1, 512)
+        self.linear2 = nn.Linear(512, self.c4*deconv1_size*deconv1_size)
+        self.deconv1 = nn.ConvTranspose2d(self.c4, self.c3, kernel_size, stride=2, output_padding=1)  
         self.deconv2 = nn.ConvTranspose2d(self.c3, self.c2, kernel_size, stride=2, output_padding=1)
-        self.deconv3 = nn.ConvTranspose2d(self.c2, self.c1, kernel_size, stride=1)
+        self.deconv3 = nn.ConvTranspose2d(self.c2, self.c1, kernel_size, stride=2, output_padding=1)
         self.deconv4 = nn.ConvTranspose2d(self.c1, 1, kernel_size, stride=1)
         
-        #self.batchnorm = nn.BatchNorm2d(self.c2)
-        #self.dropout = nn.Dropout(p=0.05, inplace=True)
-        self.relu = nn.ReLU()
+
+        # self.linear_one = nn.Linear(latent_dim + 1, 512)
+        # self.linear_two = nn.Linear(512, 784)
+        # #self.batchnorm = nn.BatchNorm2d(self.c2)
+        # #self.dropout = nn.Dropout(p=0.05, inplace=True)
+        self.relu = nn.ReLU(True)
+        self.sigmoid = nn.Sigmoid()
     
     def forward(self, x : torch.Tensor, labels : torch.Tensor):
 
@@ -191,7 +209,12 @@ class Decoder(nn.Module):
         x = self.relu(x)
 
         x = self.deconv4(x)
-        
+        # x = self.linear_one(x)
+        # x = self.relu(x)
+
+        # x = self.linear_two(x)
+        # x = self.sigmoid(x)
+        # x = x.reshape(-1, 1, 28, 28)
         return x
 
     
@@ -285,7 +308,7 @@ config = {
     "device": "cuda:0" if torch.cuda.is_available() else "cpu", 
     "img_size": 28,
     "num_workers": 8,
-    "batch_size": 32,
+    "batch_size": 64,
     'lr': 1e-3,
     "max_epochs": 50,
 }
@@ -314,12 +337,12 @@ def main():
     pprint.pprint(config)
 
     pl.seed_everything(1234)
-    vae = VAE(56, 28, config)
+    vae = VAE(128, 128, config)
     #summary(vae, (1, config['batch_size'] ,1, config['img_size'], config['img_size']))
     vae = vae.to(config["device"])
 
-    mnist = MNISTDataModule(batch_size=config["batch_size"], num_workers=config["num_workers"], img_size=config["img_size"], only_zero_one=True) 
-    cancer_dataset = BreastCancerDataset128()
+    #mnist = MNISTDataModule(batch_size=config["batch_size"], num_workers=config["num_workers"], img_size=config["img_size"], only_zero_one=True) 
+    cancer_dataset = BreastCancerDataModule()
     vit_callback = ModelCheckpoint(monitor=r'elbo',mode='min')
 
     trainer = pl.Trainer(
@@ -332,7 +355,7 @@ def main():
     # vae = VAE.load_from_checkpoint('./lightning_logs/version_19/checkpoints/epoch=49-step=1000.ckpt', latent_dim=56, img_size=28, config=config)
     # vae.to(device)
     # vae.eval()
-    trainer.fit(vae, mnist)
+    trainer.fit(vae, cancer_dataset)
 
     # img = plot_reconstructed(vae, r0=(-5, 10), r1=(-10, 5))
     # plt.imshow(img)
