@@ -5,7 +5,9 @@ from pytorch_lightning.callbacks.progress import TQDMProgressBar
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torchinfo import summary
 
-from src import data, models
+from src import data
+from src.models.ssgan import SSGAN
+from src.models.cgan import CGAN
 
 import pytorch_lightning as pl
 
@@ -21,11 +23,11 @@ def main():
     img_size = (128, 128)
     latent_size = 256
 
-    mnist = data.BreastCancerDataModule(batch_size=64, num_workers=0, preload=True)
-    model = models.GAN(num_classes=2, latent_size=latent_size, lr=1e-4)
+    datamodule = data.BreastCancerDataModule(batch_size=64, num_workers=0, preload=True)
+    model = CGAN(latent_size=latent_size, lr=3e-4)
 
     summary(model.generator, input_size=(1, latent_size,))
-    summary(model.discriminator, input_size=(1, 1, *img_size))
+    summary(model.discriminator, input_size=[(1, 1, *img_size), (1,)])
 
     checkpoint_callback = ModelCheckpoint(
         save_top_k=2, monitor="accuracy/real/val", save_last=True
@@ -36,7 +38,7 @@ def main():
         max_epochs=100,
         callbacks=[checkpoint_callback, TQDMProgressBar()],
     )
-    trainer.fit(model, mnist)
+    trainer.fit(model, datamodule)
 
 
 if __name__ == "__main__":
