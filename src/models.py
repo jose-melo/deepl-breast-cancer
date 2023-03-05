@@ -158,12 +158,10 @@ class ViT(pl.LightningModule):
         imgs, labels = imgs.to(self.config["device"]), labels.to(self.config["device"])
 
         predict = self.forward(imgs)
-        predict = predict.reshape(predict.shape[0])
-        #loss_fn = nn.CrossEntropyLoss()
-        loss_fn = sigmoid_focal_loss
-        loss = loss_fn(predict, labels.float(), reduction='mean')
+        loss_fn = nn.CrossEntropyLoss()
+        loss = loss_fn(predict, labels)
 
-        prediction = torch.sigmoid(predict) > 0.5
+        prediction = torch.softmax(predict, dim = 1).argmax(dim=1)
         m = {}
         m["tp"] = ((prediction == 1) & (labels == 1)).float().sum()
         m["fp"] = ((prediction == 1) & (labels == 0)).float().sum()
@@ -202,7 +200,7 @@ class ViTMNIST(object):
         
     def train(self):
 
-        mnist = BreastCancerDataModule(batch_size=self.config["batch_size"], num_workers=self.config["num_workers"], preload=True, rebalance_positive=0.2, augment=True)        
+        mnist = BreastCancerDataModule(batch_size=self.config["batch_size"], num_workers=self.config["num_workers"], preload=self.config['device'] == 'cuda', rebalance_positive=0.2, augment=True)        
 
         vit_callback = ModelCheckpoint(monitor=r'val_loss',mode='min')
         self.trainer = pl.Trainer(
