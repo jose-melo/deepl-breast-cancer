@@ -153,7 +153,7 @@ class ViT(pl.LightningModule):
         loss = self.calculate_loss(batch, 'train')
         return loss
     
-    def on_epoch_end(self):
+    def on_train_epoch_end(self):
         self.log_dict({
             'lr': self.lr_schedulers().get_last_lr()[0],
             },
@@ -203,7 +203,7 @@ class ViTMNIST(object):
         
     def train(self):
 
-        data = BreastCancerDataModule(batch_size=self.config["batch_size"], num_workers=self.config["num_workers"], preload=self.config['device'] == 'cuda', rebalance_positive=0.5, augment=True, load_extra_from='data/train_images_gen', max_extra=10000)        
+        data = BreastCancerDataModule(batch_size=self.config["batch_size"], num_workers=self.config["num_workers"], preload=self.config['device'] == 'cuda', augment=True, load_extra_from='data/train_images_gen')        
 
         vit_callback = ModelCheckpoint(monitor=r'val_loss',mode='min')
         self.trainer = pl.Trainer(
