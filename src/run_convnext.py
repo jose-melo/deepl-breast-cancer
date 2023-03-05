@@ -10,13 +10,13 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 config = {
     "img_size": 128,
     "data_path": "data",
-    "batch_size": 16,
-    "num_workers": 4,
+    "batch_size": 64,
+    "num_workers": 0,
     "device": "cuda" if torch.cuda.is_available() else "cpu", 
     "n_channels": 1,
     "num_classes": 2,
     "lr": 1e-4,
-    "max_epochs": 100,
+    "max_epochs": 50,
 }
 
 if __name__ == '__main__':
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     summary(model, (config["img_size"], config["n_channels"], config["img_size"], config["img_size"]))
     model = model.to(config["device"])
 
-    data = BreastCancerDataModule(batch_size=config["batch_size"], num_workers=config["num_workers"], preload=config['device'] == 'cuda', rebalance_positive=0.2, augment=True)        
+    data = BreastCancerDataModule(batch_size=config["batch_size"], num_workers=config["num_workers"], preload=config['device'] == 'cuda', augment=True, load_extra_from='data/train_images_gen')        
 
     resnet_callback = ModelCheckpoint(monitor=r'val_loss',mode='min')
     trainer = pl.Trainer(
