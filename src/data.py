@@ -1,4 +1,5 @@
 from typing import Optional, Tuple
+import sys
 import os
 from pathlib import Path
 
@@ -27,6 +28,7 @@ class BreastCancerDataset128(Dataset):
         augment: bool = False,
         preload_device: Optional[str] = None,
         load_extra_from: Optional[str] = None,
+        max_extra: int = sys.maxsize,
     ):
         if preload_device is None:
             preload_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -40,7 +42,7 @@ class BreastCancerDataset128(Dataset):
 
         if load_extra_from is not None:
             extra_labels = []
-            for label_dir in Path(load_extra_from).iterdir():
+            for label_dir in sorted(Path(load_extra_from).iterdir()):
                 if not label_dir.is_dir():
                     continue
                 label = int(label_dir.name)
@@ -49,6 +51,7 @@ class BreastCancerDataset128(Dataset):
                         continue
                     extra_labels.append((img_file.name, label))
             self.extra_labels = pd.DataFrame(extra_labels, columns=["file", "label"])
+            self.extra_labels = self.extra_labels.iloc[:max_extra]
         else:
             self.extra_labels = pd.DataFrame()
 
