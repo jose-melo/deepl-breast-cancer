@@ -1,10 +1,11 @@
-from typing import Callable, Optional, Tuple
+from typing import Optional, Tuple
+import sys
 import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import torch
-from torch import nn
 import torchvision.transforms as transforms
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, Dataset, Subset, random_split
@@ -17,7 +18,7 @@ VAL_SIZE = 0.2
 TEST_SIZE = 0.2
 
 
-class BreastCancerDataset(Dataset):
+class BreastCancerDataset128(Dataset):
     def __init__(
         self,
         root: str = "data/train_images_post",
@@ -25,28 +26,51 @@ class BreastCancerDataset(Dataset):
         preload: bool = False,
         rebalance_positive: Optional[float] = None,
         augment: bool = False,
-        _image_size: Tuple[int, int] = (512, 512)
+        preload_device: Optional[str] = None,
+        load_extra_from: Optional[str] = None,
+        max_extra: int = sys.maxsize,
     ):
+        if preload_device is None:
+            preload_device = "cuda" if torch.cuda.is_available() else "cpu"
+
         self.root = root
+        self.load_extra_from = load_extra_from
         self.rebalance_positive = rebalance_positive
         self.labels = pd.read_csv(
             label_file, index_col=False, usecols=["image_id", "cancer"]
         )
+
+        if load_extra_from is not None:
+            extra_labels = []
+            for label_dir in sorted(Path(load_extra_from).iterdir()):
+                if not label_dir.is_dir():
+                    continue
+                label = int(label_dir.name)
+                for img_file in label_dir.iterdir():
+                    if not img_file.is_file():
+                        continue
+                    extra_labels.append((img_file.name, label))
+            self.extra_labels = pd.DataFrame(extra_labels, columns=["file", "label"])
+            self.extra_labels = self.extra_labels.iloc[:max_extra]
+        else:
+            self.extra_labels = pd.DataFrame()
+
         if preload:
+            total_labels = len(self.labels) + len(self.extra_labels)
             self._preloaded = []
-            for idx in tqdm(range(len(self.labels)), desc="Preloading data"):
-                self._preloaded.append(self._load_idx(idx, convert_to_float=False))
+            for idx in tqdm(range(total_labels), desc="Preloading data"):
+                self._preloaded.append(self._load_img(idx).to(preload_device))
         else:
             self._preloaded = None
 
         self.augment = augment
         if augment:
             self.random_resized_crop = transforms.RandomResizedCrop(
-                _image_size, scale=(0.8, 1), ratio=(0.8, 1.2)
+                (128, 128), scale=(0.8, 1), ratio=(0.8, 1.2)
             )
 
         trainval, self.test = train_test_split(
-            np.arange(len(self)),
+            np.arange(len(self.labels)),
             test_size=TEST_SIZE,
             stratify=self.labels.cancer,
             shuffle=True,
@@ -60,11 +84,21 @@ class BreastCancerDataset(Dataset):
             random_state=42,
         )
 
+        if len(self.extra_labels) > 0:
+            self.train = np.concatenate(
+                [
+                    self.train,
+                    np.arange(
+                        len(self.train), len(self.train) + len(self.extra_labels)
+                    ),
+                ]
+            )
+
         self.train_neg = np.array(
-            [idx for idx in self.train if self.labels.iloc[idx, 1] == 0]
+            [idx for idx in self.train if self.get_label(idx) == 0]
         )
         self.train_pos = np.array(
-            [idx for idx in self.train if self.labels.iloc[idx, 1] == 1]
+            [idx for idx in self.train if self.get_label(idx) == 1]
         )
 
     def split(self) -> Tuple[Subset, Subset, Subset]:
@@ -75,32 +109,39 @@ class BreastCancerDataset(Dataset):
         )
 
     def __len__(self):
-        return len(self.labels)
+        return len(self.labels) + len(self.extra_labels)
 
-    def _load_idx(
+    def _load_img(
         self,
         idx: int,
-        convert_to_float: bool = False,
     ):
-        image_id = self.labels.iloc[idx, 0]
-        image_file = os.path.join(self.root, "0", f"{image_id}.png")
-        img = torchvision.io.read_image(image_file)
-        if convert_to_float:
-            padded_img = torch.zeros((1, 512, 512), dtype=torch.float32)
-            img = img.to(torch.float32) / 255
+        if idx < len(self.labels):
+            image_id = self.labels.iloc[idx, 0]
+            image_file = os.path.join(self.root, "0", f"{image_id}.png")
         else:
-            padded_img = torch.zeros((1, 512, 512), dtype=torch.uint8)
-        padded_img[[0], : img.shape[1], : img.shape[2]] = img
-        return padded_img
+            assert self.load_extra_from is not None
+            filename, cancer = self.extra_labels.iloc[idx - len(self.labels)]
+            image_file = os.path.join(self.load_extra_from, str(cancer), filename)
+        img = torchvision.io.read_image(image_file)
 
-    def _getitem(self, idx: int):
+        padded_img = torch.zeros((1, 512, 512), dtype=torch.float32)
+        padded_img[[0], : img.shape[1], : img.shape[2]] = img.to(torch.float32) / 255
+
+        return transforms.functional.resize(padded_img, (128, 128))
+
+    def get_image(self, idx: int):
         if self._preloaded is not None:
             padded_img = self._preloaded[idx]
-            padded_img = padded_img.to(torch.float32) / 255
         else:
-            padded_img = self._load_idx(idx, convert_to_float=True)
+            padded_img = self._load_img(idx)
 
         return padded_img
+
+    def get_label(self, idx: int):
+        if idx < len(self.labels):
+            return self.labels.iloc[idx, 1]
+        else:
+            return self.extra_labels.iloc[idx - len(self.labels), 1]
 
     def __getitem__(self, idx: int):
         # Resampling in the training dataset
@@ -110,53 +151,15 @@ class BreastCancerDataset(Dataset):
             else:
                 idx = self.train_neg[torch.randint(len(self.train_pos), (1,))]
 
-        img = self._getitem(idx)
+        img = self.get_image(idx)
 
         if self.augment:
             img = self.random_resized_crop(img)
             std = torch.rand(1) * 0.1
             img += torch.randn_like(img) * std.to(img.device)
 
-        cancer = self.labels.iloc[idx, 1]
+        cancer = self.get_label(idx)
         return img, cancer
-
-
-class BreastCancerDataset128(BreastCancerDataset):
-    def __init__(
-        self,
-        root: str = "data/train_images_post",
-        label_file: str = "data/train.csv",
-        preload: bool = False,
-        rebalance_positive: Optional[float] = None,
-        augment: bool = False,
-    ):
-        super().__init__(
-            root,
-            label_file,
-            preload=False,
-            rebalance_positive=rebalance_positive,
-            augment=augment,
-            _image_size=(128, 128),
-        )
-        if preload:
-            self._preloaded = []
-            for idx in tqdm(range(len(self.labels)), desc="Preloading data"):
-                self._preloaded.append(self._load_idx(idx).to("cuda"))
-
-    def _load_idx(
-        self,
-        idx: int,
-    ):
-        img = super()._load_idx(idx, convert_to_float=True)
-        return transforms.functional.resize(img, (128, 128))
-
-    def _getitem(self, idx: int):
-        if self._preloaded is not None:
-            padded_img = self._preloaded[idx]
-        else:
-            padded_img = self._load_idx(idx)
-
-        return padded_img
 
 
 class BreastCancerDataModule(pl.LightningDataModule):
@@ -166,44 +169,47 @@ class BreastCancerDataModule(pl.LightningDataModule):
         label_file: str = "data/train.csv",
         batch_size: int = 64,
         num_workers: int = 1,
-        resize_to_128: bool = True,
         preload: bool = False,
         rebalance_positive: Optional[float] = None,
         augment: bool = False,
+        load_extra_from: Optional[str] = None,
+        num_training_samples: Optional[int] = None,
     ):
         super().__init__()
         self.root = root
         self.label_file = label_file
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.resize_to_128 = resize_to_128
         self.preload = preload
         self.rebalance_positive = rebalance_positive
         self.augment = augment
+        self.load_extra_from = load_extra_from
+        self.num_training_samples = num_training_samples
 
     def setup(self, stage=None):
-        if self.resize_to_128:
-            dataset_cls = BreastCancerDataset128
-        else:
-            dataset_cls = BreastCancerDataset
-
-        self.train, self.val, self.test = dataset_cls(
+        self.train, self.val, self.test = BreastCancerDataset128(
             self.root,
             self.label_file,
             preload=self.preload,
             rebalance_positive=self.rebalance_positive,
             augment=self.augment,
+            load_extra_from=self.load_extra_from,
         ).split()
 
-    def _dataloader(self, ds: Subset):
+    def _dataloader(self, ds: Subset, **kwargs):
         return DataLoader(
             ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            **kwargs,
         )
 
     def train_dataloader(self):
-        return self._dataloader(self.train)
+        sampler = None
+        if self.num_training_samples is not None:
+            sampler = torch.utils.data.RandomSampler(self.train, replacement=True, num_samples=self.num_training_samples)
+        print('asdfasddfa'*3, len(self.train))
+        return self._dataloader(self.train, sampler=sampler)
 
     def val_dataloader(self):
         return self._dataloader(self.val)
