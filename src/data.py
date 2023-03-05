@@ -173,6 +173,7 @@ class BreastCancerDataModule(pl.LightningDataModule):
         rebalance_positive: Optional[float] = None,
         augment: bool = False,
         load_extra_from: Optional[str] = None,
+        num_training_samples: Optional[int] = None,
     ):
         super().__init__()
         self.root = root
@@ -183,6 +184,7 @@ class BreastCancerDataModule(pl.LightningDataModule):
         self.rebalance_positive = rebalance_positive
         self.augment = augment
         self.load_extra_from = load_extra_from
+        self.num_training_samples = num_training_samples
 
     def setup(self, stage=None):
         self.train, self.val, self.test = BreastCancerDataset128(
@@ -194,15 +196,20 @@ class BreastCancerDataModule(pl.LightningDataModule):
             load_extra_from=self.load_extra_from,
         ).split()
 
-    def _dataloader(self, ds: Subset):
+    def _dataloader(self, ds: Subset, **kwargs):
         return DataLoader(
             ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            **kwargs,
         )
 
     def train_dataloader(self):
-        return self._dataloader(self.train)
+        sampler = None
+        if self.num_training_samples is not None:
+            sampler = torch.utils.data.RandomSampler(self.train, replacement=True, num_samples=self.num_training_samples)
+        print('asdfasddfa'*3, len(self.train))
+        return self._dataloader(self.train, sampler=sampler)
 
     def val_dataloader(self):
         return self._dataloader(self.val)
