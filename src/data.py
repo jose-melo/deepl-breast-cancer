@@ -28,7 +28,7 @@ class BreastCancerDataset128(Dataset):
         augment: bool = False,
         preload_device: Optional[str] = None,
         load_extra_from: Optional[str] = None,
-        max_extra: int = sys.maxsize,
+        max_extra: int = sys.maxsize
     ):
         if preload_device is None:
             preload_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -173,6 +173,7 @@ class BreastCancerDataModule(pl.LightningDataModule):
         rebalance_positive: Optional[float] = None,
         augment: bool = False,
         load_extra_from: Optional[str] = None,
+        max_extra: int = sys.maxsize,
     ):
         super().__init__()
         self.root = root
@@ -183,6 +184,7 @@ class BreastCancerDataModule(pl.LightningDataModule):
         self.rebalance_positive = rebalance_positive
         self.augment = augment
         self.load_extra_from = load_extra_from
+        self.max_extra = max_extra
 
     def setup(self, stage=None):
         self.train, self.val, self.test = BreastCancerDataset128(
@@ -192,6 +194,7 @@ class BreastCancerDataModule(pl.LightningDataModule):
             rebalance_positive=self.rebalance_positive,
             augment=self.augment,
             load_extra_from=self.load_extra_from,
+            max_extra=self.max_extra
         ).split()
 
     def _dataloader(self, ds: Subset):
