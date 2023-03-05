@@ -10,14 +10,15 @@ default_config = {
     "num_workers": 4,
     "device": "cuda" if torch.cuda.is_available() else "cpu", 
     "n_channels": 1,
-    "embedding_dim": 64, 
-    "patch": 128,
-    "dim_feed_forward": 128,
+    "embedding_dim": 256, 
+    "patch": 64,
+    "dim_feed_forward": 64,
     "num_classes": 2,
     "num_layers": 6,
-    "lr": 1e-4,
-    "max_epochs": 50,
+    "lr": 5e-4,
+    "max_epochs": 100,
     "num_attention_heads": 4,
+    "num_training_samples": 32823*2
 }
 
 if __name__ == '__main__':

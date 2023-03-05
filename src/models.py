@@ -143,15 +143,22 @@ class ViT(pl.LightningModule):
         x = self.fc2(x)
 
         return x 
-    
             
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), self.config["lr"], weight_decay=1e-3)            
+        adamw = torch.optim.AdamW(self.parameters(), self.config["lr"], weight_decay=1e-3)            
+        lr_decay = torch.optim.lr_scheduler.CosineAnnealingLR(adamw,self.config["max_epochs"])
+        return [adamw], [lr_decay]
 
     def training_step(self, batch, batch_idx) -> None:
         loss = self.calculate_loss(batch, 'train')
         return loss
     
+    def on_epoch_end(self):
+        self.log_dict({
+            'lr': self.lr_schedulers().get_last_lr()[0],
+            },
+        )
+
     def calculate_loss(self, batch, mode):
         imgs, labels = batch
 
@@ -167,10 +174,6 @@ class ViT(pl.LightningModule):
         m["fp"] = ((prediction == 1) & (labels == 0)).float().sum()
         m["tn"] = ((prediction == 0) & (labels == 0)).float().sum()
         m["fn"] = ((prediction == 0) & (labels == 1)).float().sum()
-
-        m["precision"] = m["tp"] / (m["tp"] + m["fp"])
-        m["recall"] = m["tp"] / (m["tp"] + m["fn"])
-        m["f1"] = 2 * m["precision"] * m["recall"] / (m["precision"] + m["recall"])
 
         self.log("%s_loss" % mode, loss)
         for metric, value in m.items():
@@ -200,7 +203,7 @@ class ViTMNIST(object):
         
     def train(self):
 
-        mnist = BreastCancerDataModule(batch_size=self.config["batch_size"], num_workers=self.config["num_workers"], preload=self.config['device'] == 'cuda', rebalance_positive=0.2, augment=True)        
+        data = BreastCancerDataModule(batch_size=self.config["batch_size"], num_workers=self.config["num_workers"], preload=self.config['device'] == 'cuda', rebalance_positive=0.5, augment=True)        
 
         vit_callback = ModelCheckpoint(monitor=r'val_loss',mode='min')
         self.trainer = pl.Trainer(
@@ -211,6 +214,6 @@ class ViTMNIST(object):
             callbacks=[vit_callback]
         )
 
-        self.trainer.fit(self.model, mnist)
+        self.trainer.fit(self.model, data)
 
         self.trainer.save_checkpoint(f'ckpt_save_{datetime.now().strftime("%Y%m%d%H%M%S")}.ckpt')        
