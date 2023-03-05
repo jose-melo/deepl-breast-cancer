@@ -220,6 +220,7 @@ class MNISTDataModule(pl.LightningDataModule):
         val_frac: float = 0.2,
         img_size: Tuple[int, int] = (28, 28),
         random_state: Optional[int] = None,
+        only_zero_one = False
     ):
         super().__init__()
         self.batch_size = batch_size
@@ -227,16 +228,24 @@ class MNISTDataModule(pl.LightningDataModule):
         self.val_frac = val_frac
         self.img_size = img_size
         self.random_state = random_state
+        self.only_zero_one = True
 
     def _make_mnist(self, **kwargs):
-        return MNIST(
+
+        mnist_dataset = MNIST(
             "data",
             transform=transforms.Compose(
                 [transforms.ToTensor(), transforms.Resize(self.img_size)]
             ),
             **kwargs,
         )
+        
+        if(self.only_zero_one):
+            indices = (mnist_dataset.targets == 0) | (mnist_dataset.targets == 1)
+            mnist_dataset.data, mnist_dataset.targets = mnist_dataset.data[indices], mnist_dataset.targets[indices]
 
+        return mnist_dataset
+            
     def prepare_data(self):
         self.mnist_trainval = self._make_mnist(train=True, download=True)
         self.mnist_test = self._make_mnist(train=False, download=True)
