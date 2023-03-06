@@ -57,6 +57,7 @@ The models are located in the /models folder, while the scripts to run each mode
     │   ├── convnext.py
     │   ├── resnet.py
     │   ├── ssgan.py
+    │   ├── vae.py
     │   └── vit.py
     ├── data.py
     ├── preprocess.py
@@ -64,6 +65,7 @@ The models are located in the /models folder, while the scripts to run each mode
     ├── run_convnext.py
     ├── run_gan.py
     ├── run_resnet.py
+    ├── run_vae.py
     └── run_vit.py
 
 ```
