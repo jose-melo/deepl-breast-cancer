@@ -174,6 +174,7 @@ class BreastCancerDataModule(pl.LightningDataModule):
         augment: bool = False,
         load_extra_from: Optional[str] = None,
         max_extra: int = sys.maxsize,
+        num_training_samples: Optional[int] = None,
     ):
         super().__init__()
         self.root = root
@@ -185,6 +186,7 @@ class BreastCancerDataModule(pl.LightningDataModule):
         self.augment = augment
         self.load_extra_from = load_extra_from
         self.max_extra = max_extra
+        self.num_training_samples = num_training_samples
 
     def setup(self, stage=None):
         self.train, self.val, self.test = BreastCancerDataset128(
@@ -197,15 +199,20 @@ class BreastCancerDataModule(pl.LightningDataModule):
             max_extra=self.max_extra
         ).split()
 
-    def _dataloader(self, ds: Subset):
+    def _dataloader(self, ds: Subset, **kwargs):
         return DataLoader(
             ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            **kwargs,
         )
 
     def train_dataloader(self):
-        return self._dataloader(self.train)
+        sampler = None
+        if self.num_training_samples is not None:
+            sampler = torch.utils.data.RandomSampler(self.train, replacement=True, num_samples=self.num_training_samples)
+        print('asdfasddfa'*3, len(self.train))
+        return self._dataloader(self.train, sampler=sampler)
 
     def val_dataloader(self):
         return self._dataloader(self.val)
@@ -222,6 +229,7 @@ class MNISTDataModule(pl.LightningDataModule):
         val_frac: float = 0.2,
         img_size: Tuple[int, int] = (28, 28),
         random_state: Optional[int] = None,
+        only_zero_one = False
     ):
         super().__init__()
         self.batch_size = batch_size
@@ -229,16 +237,24 @@ class MNISTDataModule(pl.LightningDataModule):
         self.val_frac = val_frac
         self.img_size = img_size
         self.random_state = random_state
+        self.only_zero_one = True
 
     def _make_mnist(self, **kwargs):
-        return MNIST(
+
+        mnist_dataset = MNIST(
             "data",
             transform=transforms.Compose(
                 [transforms.ToTensor(), transforms.Resize(self.img_size)]
             ),
             **kwargs,
         )
+        
+        if(self.only_zero_one):
+            indices = (mnist_dataset.targets == 0) | (mnist_dataset.targets == 1)
+            mnist_dataset.data, mnist_dataset.targets = mnist_dataset.data[indices], mnist_dataset.targets[indices]
 
+        return mnist_dataset
+            
     def prepare_data(self):
         self.mnist_trainval = self._make_mnist(train=True, download=True)
         self.mnist_test = self._make_mnist(train=False, download=True)
