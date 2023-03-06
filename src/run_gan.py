@@ -5,9 +5,9 @@ from pytorch_lightning.callbacks.progress import TQDMProgressBar
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torchinfo import summary
 
-from src import data
-from src.models.ssgan import SSGAN
-from src.models.cgan import CGAN
+import data
+from models.ssgan import SSGAN
+from models.cgan import CGAN
 
 import pytorch_lightning as pl
 
