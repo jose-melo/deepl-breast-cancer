@@ -1,5 +1,5 @@
 import torch
-from models import ViTMNIST
+from models.vit import ViTMNIST
 import pprint
 from torchinfo import summary
 

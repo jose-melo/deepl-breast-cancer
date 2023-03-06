@@ -1,8 +1,7 @@
 import torch
-from models import ViTMNIST
 import pprint
 from torchinfo import summary
-from convnext import ConvNextSmall
+from models.convnext import ConvNextSmall
 import pytorch_lightning as pl
 from data import BreastCancerDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint
