@@ -6,3 +6,6 @@ pytorch-lightning
 torchinfo
 scikit-learn
 tqdm
+pylibjpeg-openjpeg
+pylibjpeg-libjpeg
+pylibjpeg
