@@ -6,6 +6,11 @@ __pycache__/
 # C extensions
 *.so
 
+lightning_logs/
+*.ckpt
+.vscode
+data/
+
 # Distribution / packaging
 .Python
 build/
